@@ -1,0 +1,15 @@
+{
+    "namespace": "com.ibm.china.ce",
+    "type": "record",
+    "name": "online_retail_II",
+    "fields": [
+        {"name": "Invoice", "type": "string"},
+        {"name": "StockCode", "type": "string"},
+        {"name": "Description", "type":"string"},
+        {"name":"Quantity", "type":"int"},
+        {"name":"InvoiceDate", "type":"string"},
+        {"name":"Price", "type":"float"},
+        {"name":"CustomerID", "type":"string", "default": ""},
+        {"name":"Country", "type":"string"}
+    ]
+}

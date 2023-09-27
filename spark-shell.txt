@@ -1,0 +1,23 @@
+import io.confluent.kafka.schemaregistry.client.rest.RestService
+import org.apache.spark.sql.avro.functions.from_avro;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.functions.col
+
+val TOPIC:String = "ce_online_retail_II"
+
+val retail_df = spark.readStream.format("kafka").option("kafka.bootstrap.servers", "kafka:9092").option("subscribe", TOPIC).option("startingOffsets", "earliest").option("mode", "PERMISSIVE").load()
+
+val SCHEMA_REGISTRY_URL: String = "http://sn-schema-registry:8081"
+val restService = new RestService(SCHEMA_REGISTRY_URL)
+val valueRestResponseSchema = restService.getLatestVersion(TOPIC + "-value")
+val valueSchema = valueRestResponseSchema.getSchema
+
+var transactionDF = retail_df.select(
+      col("key").cast("string"), // cast to string from binary value
+      from_avro(col("value"), valueSchema).as("transaction"), // convert from avro value
+      col("offset"),
+	  col("timestamp"),
+	  col("timestampType"))
+	  
+transactionDF.printSchema()
+transactionDF.writeStream.format("console").outputMode("append").start().awaitTermination()
