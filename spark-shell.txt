@@ -21,3 +21,22 @@ var transactionDF = retail_df.select(
 	  
 transactionDF.printSchema()
 transactionDF.writeStream.format("console").outputMode("append").start().awaitTermination()
+
+
+
+import org.apache.spark.sql.types._
+import org.apache.spark.sql.Row
+
+if (!(spark.catalog.tableExists(TOPIC))) {
+    val schema = StructType( Array(
+        StructField("Invoice", StringType,true),
+        StructField("StockCode", StringType,true),
+        StructField("Description", StringType,true),
+        StructField("Quantity", IntegerType,true),
+        StructField("InvoiceDate", StringType,true),
+	    StructField("CustomerID", StringType,true),
+	    StructField("Country", StringType,true)
+    ))
+    val df = spark.createDataFrame(spark.sparkContext.emptyRDD[Row],schema)
+    df.writeTo("dwx.table." + TOPIC).create()
+}
