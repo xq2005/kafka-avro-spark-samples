@@ -1,42 +1,60 @@
-import io.confluent.kafka.schemaregistry.client.rest.RestService
+spark-shell --master spark://spark-master:7077
+
+import io.confluent.kafka.schemaregistry.client.rest.RestService;
 import org.apache.spark.sql.avro.functions.from_avro;
 import org.apache.spark.sql.Row;
-import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.functions.col;
+import org.apache.spark.sql.types._;
+import org.apache.spark.sql.Row;
+
+import java.util.concurrent.TimeUnit;
+import org.apache.spark.sql.streaming.Trigger;
+import java.io.IOException;
+import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
+
 
 val TOPIC:String = "ce_online_retail_II"
 
-val retail_df = spark.readStream.format("kafka").option("kafka.bootstrap.servers", "kafka:9092").option("subscribe", TOPIC).option("startingOffsets", "earliest").option("mode", "PERMISSIVE").load()
+var valueSchema = ""
+try{
+    val SCHEMA_REGISTRY_URL: String = "http://sn-schema-registry:8081"
+    val restService = new RestService(SCHEMA_REGISTRY_URL)
+    val valueRestResponseSchema = restService.getLatestVersion(TOPIC + "-value")
+    valueSchema = valueRestResponseSchema.getSchema
+} catch {
+    case ex: RestClientException => println("Can not query schema from iceberg schema rest")
+	case ex: IOException => println("Can not connect iceberg schema rest")
+}
 
-val SCHEMA_REGISTRY_URL: String = "http://sn-schema-registry:8081"
-val restService = new RestService(SCHEMA_REGISTRY_URL)
-val valueRestResponseSchema = restService.getLatestVersion(TOPIC + "-value")
-val valueSchema = valueRestResponseSchema.getSchema
-
-var transactionDF = retail_df.select(
-      col("key").cast("string"), // cast to string from binary value
-      from_avro(col("value"), valueSchema).as("transaction"), // convert from avro value
-      col("offset"),
-	  col("timestamp"),
-	  col("timestampType"))
-	  
-transactionDF.printSchema()
-transactionDF.writeStream.format("console").outputMode("append").start().awaitTermination()
-
-
-
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.Row
-
-if (!(spark.catalog.tableExists(TOPIC))) {
+val table_name = "dwx." + TOPIC
+if (!(spark.catalog.tableExists(table_name))) {
     val schema = StructType( Array(
         StructField("Invoice", StringType,true),
         StructField("StockCode", StringType,true),
         StructField("Description", StringType,true),
         StructField("Quantity", IntegerType,true),
         StructField("InvoiceDate", StringType,true),
+		StructField("Price", FloatType,true),
 	    StructField("CustomerID", StringType,true),
 	    StructField("Country", StringType,true)
     ))
     val df = spark.createDataFrame(spark.sparkContext.emptyRDD[Row],schema)
-    df.writeTo("dwx.table." + TOPIC).create()
+    df.writeTo(table_name).create()
 }
+
+//spark.catalog.listColumns(table_name).show()
+//spark.table(table_name).schema
+
+import spark.implicits._
+val retail_df = spark.readStream.format("kafka").option("kafka.bootstrap.servers", "kafka:9092").option("subscribe", TOPIC).option("startingOffsets", "earliest").load()
+	
+val transactionDF = retail_df.select(
+      col("key").cast("string"), // cast to string from binary value
+      from_avro(col("value"), valueSchema).as("transaction"), // convert from avro value
+      col("offset"),
+	  col("timestamp"),
+	  col("timestampType")).select(col("transaction.*"))
+	  
+transactionDF.printSchema()
+
+transactionDF.writeStream.format("iceberg").outputMode("append").trigger(Trigger.ProcessingTime(1, TimeUnit.MINUTES)).option("path", table_name).option("checkpointLocation", "/tmp").start().awaitTermination()
