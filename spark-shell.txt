@@ -58,3 +58,7 @@ val transactionDF = retail_df.select(
 transactionDF.printSchema()
 
 transactionDF.writeStream.format("iceberg").outputMode("append").trigger(Trigger.ProcessingTime(1, TimeUnit.MINUTES)).option("path", table_name).option("checkpointLocation", "/tmp").start().awaitTermination()
+
+
+spark-submit --class com.ibm.gcg.ce.KafkaIcebergSinker --master spark://spark-master:7077 --deploy-mode cluster --driver-cores 1 --driver-memory 1G --executor-memory 512M --executor-cores 1 --total-executor-cores=3 /home/application_jars/KafkaIcebergSinker.jar
+spark-shell --master spark://spark-master:7077 --executor-memory 512M --executor-cores 1 --total-executor-cores=1
